@@ -1,78 +1,62 @@
-# Building & developing
+# Building and developing
 
-Transparency App is Windows-only (it uses Win32 layered windows and event
-hooks). You need **Python 3.12** on **Windows 10/11**.
+Transparency App is Windows only (Win32 layered windows, event hooks and
+gamma ramps). You need **Rust stable with the MSVC toolchain** on
+**Windows 10 or 11**.
 
-## Set up a dev environment
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements-dev.txt
-```
-
-## Run from source
+## Run and build
 
 ```powershell
-python -m transparency_app
+cargo run                 # debug build
+cargo build --release     # target\release\TransparencyApp.exe
+target\release\TransparencyApp.exe --self-test
 ```
 
-## Run the tests
+The UI lives in `ui/*.slint` and is compiled into the executable by
+`build.rs`, together with the icon, version info and manifest in `res/`.
 
-The suite creates real Win32 windows, so run it through the sandboxed wrapper,
-which launches pytest on a hidden desktop with a hard watchdog (nothing ever
-appears on screen or hangs your session):
+## Tests
 
 ```powershell
-powershell -File scripts\run_tests.ps1
+cargo test
 ```
 
-Or run pytest directly if you don't mind test windows flashing:
+The unit tests are pure logic (no windows are created), including the gamma
+lifecycle with a fake display driver: dimming, a screen turning off and coming
+back under a new device name, restores owed across restarts, and leftover dims
+never being taken as the original.
 
-```powershell
-pytest tests -v --timeout=60 --timeout-method=thread
-```
+Debug builds have two extra developer modes:
 
-## Build the executable
-
-```powershell
-pyinstaller --clean --noconfirm TransparencyApp.spec
-```
-
-The result is `dist\TransparencyApp.exe`. Verify it starts:
-
-```powershell
-dist\TransparencyApp.exe --self-test
-```
+- `TransparencyApp --ui-preview <folder>` renders every page with sample data
+  and saves screenshots (nothing on the system is changed).
+- `TransparencyApp --drive-test <screen name>` runs the real dimmer against
+  one physical screen (for example `LG`) and checks it is dimmed, survives a
+  display change without compounding and is restored exactly. The screen dims
+  for a few seconds.
 
 ## Releases
 
-Releases are built automatically by GitHub Actions
-(`.github/workflows/release.yml`). Pushing a tag that starts with `v` runs the
-tests, builds the executable, smoke-tests it, and publishes a GitHub Release
-with the `.exe` and a zip attached:
-
-```powershell
-git tag v2.0.0
-git push origin v2.0.0
-```
-
-You can also trigger the workflow manually from the Actions tab with a tag
-name.
+Pushing a tag that starts with `v` runs the tests, builds the release exe,
+smoke tests it and publishes a GitHub Release with the exe attached
+(`.github/workflows/release.yml`). Keep the version in `Cargo.toml` and
+`res/app.rc` in step with the tag.
 
 ## Project layout
 
 ```
-transparency_app/
-  winapi.py     Win32 wrappers (ctypes, GIL-releasing) + WinEventHook
-  engine.py     Event-driven transparency engine (single worker thread)
-  config.py     Rules / presets / settings model, debounced atomic saves
-  dimmer.py     Multi-monitor screen-dimming overlay
-  hotkeys.py    Global hotkey manager (RegisterHotKey pump thread)
-  startup.py    Run-at-startup registry toggle
-  paths.py      %APPDATA% paths, logging, v1 migration
-  tray.py       System-tray icon
-  app.py        Controller wiring everything together
-  ui/           CustomTkinter interface (theme, window, rule card, picker)
-tests/          pytest suite (real windows, run via scripts/run_tests.ps1)
+src/
+  main.rs      Entry point: single instance, installer mode, self-test
+  app.rs       Core shared by the window, tray and hotkeys
+  shell.rs     Hidden shell window: tray, hotkeys, display/lid/power events
+  engine.rs    Event-driven transparency engine
+  dimmer.rs    Per-screen dimming (gamma plus overlay)
+  gamma.rs     Gamma ramps keyed by stable screen id, with owed restores
+  config.rs    Settings model, debounced atomic saves, migrations
+  win.rs       Win32 helpers and monitor enumeration
+  ui.rs        Glue between Slint and the core
+  updater.rs   Verified GitHub Release updates and the swap installer
+  preview.rs   Debug-only UI preview and hardware drive test
+ui/            Slint interface and icons
+res/           Windows resources (icon, version info, manifest)
 ```

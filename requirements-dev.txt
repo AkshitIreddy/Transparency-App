@@ -1,6 +1,0 @@
-# Development / CI dependencies
--r requirements.txt
-pytest>=8
-pytest-timeout>=2.3
-pytest-rerunfailures>=14
-pyinstaller>=6.6

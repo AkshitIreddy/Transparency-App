@@ -1,5 +1,0 @@
-# Runtime dependencies
-customtkinter>=5.2,<7
-pywin32>=306
-pystray>=0.19
-Pillow>=10

@@ -1,0 +1,1784 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Icon, Toggle, FancySlider, Btn, IconBtn, Segmented, TextField, CheckPill, CheckBox,
+    Keycap, Badge, Card, SectionTitle, SettingRow, Divider } from "widgets.slint";
+
+export { Theme }
+
+export struct RuleItem {
+    id: string,
+    pattern: string,
+    mode: int,
+    opacity: int,
+    enabled: bool,
+    click: bool,
+    topmost: bool,
+}
+
+export struct MonitorItem {
+    id: string,
+    name: string,
+    detail: string,
+    kind: int, // 0 external, 1 built-in, 2 virtual
+    primary: bool,
+    selected: bool,
+    level: int,
+    mode: string,
+    aspect: float,
+}
+
+export struct PickItem {
+    title: string,
+    process: string,
+}
+
+export struct HotkeyItem {
+    action: string,
+    name: string,
+    keys: [string],
+    ok: bool,
+}
+
+component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> active;
+    in property <bool> live;
+    in property <string> badge;
+    callback clicked;
+    height: 40px;
+    border-radius: 10px;
+    background: active ? Theme.accent-soft : ta.has-hover ? Theme.surface-2 : transparent;
+    animate background { duration: 140ms; }
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: root.active ? 18px : 0px;
+        border-radius: 2px;
+        background: Theme.accent;
+        animate height { duration: 180ms; easing: ease-out; }
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 12px;
+        Icon {
+            source: root.icon;
+            y: (parent.height - self.height) / 2;
+            tint: root.active ? Theme.accent : Theme.muted;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            font-size: 13.5px;
+            font-weight: root.active ? 600 : 500;
+            color: root.active ? Theme.text : Theme.muted;
+            vertical-alignment: center;
+        }
+        if root.badge != "": Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 20px;
+            width: max(20px, bt.preferred-width + 12px);
+            border-radius: 10px;
+            background: Theme.surface-3;
+            bt := Text {
+                text: root.badge;
+                font-size: 11px;
+                font-weight: 600;
+                color: Theme.muted;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        if root.live: Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: Theme.success;
+            drop-shadow-blur: 6px;
+            drop-shadow-color: Theme.success.transparentize(0.3);
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Little checkerboard tile showing a window at the rule's opacity.
+component OpacityPreview inherits Rectangle {
+    in property <int> alpha: 255;
+    in property <bool> enabled: true;
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    clip: true;
+    background: Theme.surface-3;
+    for i in 16: Rectangle {
+        x: Math.mod(i, 4) * 11.5px;
+        y: Math.floor(i / 4) * 11.5px;
+        width: 11.5px;
+        height: 11.5px;
+        background: Math.mod(i + Math.floor(i / 4), 2) == 0 ? Theme.surface-2 : Theme.surface-3;
+    }
+    Rectangle {
+        x: 8px;
+        y: 10px;
+        width: 30px;
+        height: 26px;
+        border-radius: 5px;
+        background: root.enabled ? Theme.accent-gradient : Theme.faint;
+        opacity: root.alpha / 255;
+        Rectangle {
+            x: 4px;
+            y: 4px;
+            width: 12px;
+            height: 3px;
+            border-radius: 1.5px;
+            background: white.transparentize(0.3);
+        }
+    }
+}
+
+component RuleCard inherits Card {
+    in property <RuleItem> rule;
+    callback pattern-edited(string);
+    callback mode-changed(int);
+    callback opacity-changed(int);
+    callback enabled-changed(bool);
+    callback click-changed(bool);
+    callback topmost-changed(bool);
+    callback delete();
+    border-color: hover.has-hover ? Theme.border-strong : Theme.border;
+    animate border-color { duration: 150ms; }
+    hover := TouchArea { }
+    VerticalLayout {
+        padding: 16px;
+        padding-bottom: 14px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 14px;
+            OpacityPreview {
+                alpha: root.rule.opacity;
+                enabled: root.rule.enabled;
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 5px;
+                alignment: center;
+                TextField {
+                    text: root.rule.pattern;
+                    placeholder: root.rule.mode == 2 ? "app.exe" : "Part of a window title";
+                    font-size: 14px;
+                    edited(t) => { root.pattern-edited(t); }
+                }
+                Text {
+                    text: root.rule.mode == 0 ? "Any window whose title contains this text"
+                        : root.rule.mode == 1 ? "Only windows with exactly this title"
+                        : "Every window of this app, whatever its title";
+                    font-size: 11.5px;
+                    color: Theme.faint;
+                    overflow: elide;
+                }
+            }
+            Segmented {
+                y: 2px;
+                options: ["Contains", "Exact", "App"];
+                selected: root.rule.mode;
+                select(i) => { root.mode-changed(i); }
+            }
+            Toggle {
+                y: 6px;
+                checked: root.rule.enabled;
+                toggled(v) => { root.enabled-changed(v); }
+            }
+            IconBtn {
+                y: 1px;
+                icon: @image-url("icons/trash.svg");
+                danger: true;
+                clicked => { root.delete(); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Text {
+                text: "Opacity";
+                width: 62px;
+                font-size: 12px;
+                color: Theme.muted;
+                vertical-alignment: center;
+            }
+            FancySlider {
+                horizontal-stretch: 1;
+                minimum: 0;
+                maximum: 255;
+                value: root.rule.opacity;
+                enabled: root.rule.enabled;
+                changed(v) => { root.opacity-changed(v); }
+            }
+            Text {
+                text: "\{Math.round(root.rule.opacity / 255 * 100)}%";
+                width: 42px;
+                font-size: 13px;
+                font-weight: 700;
+                color: Theme.text;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+            HorizontalLayout {
+                spacing: 4px;
+                for s in [{l: "25", v: 64}, {l: "50", v: 128}, {l: "75", v: 191}, {l: "100", v: 255}]: Rectangle {
+                    width: 38px;
+                    height: 26px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 7px;
+                    background: root.rule.opacity == s.v ? Theme.accent-soft : sta.has-hover ? Theme.surface-3 : Theme.surface-2;
+                    Text {
+                        text: s.l;
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: root.rule.opacity == s.v ? Theme.accent : Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    sta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.opacity-changed(s.v); }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Rectangle { width: 62px; }
+            CheckPill {
+                text: "Click-through";
+                icon: @image-url("icons/pointer.svg");
+                checked: root.rule.click;
+                toggled(v) => { root.click-changed(v); }
+            }
+            CheckPill {
+                text: "Always on top";
+                icon: @image-url("icons/pin.svg");
+                checked: root.rule.topmost;
+                toggled(v) => { root.topmost-changed(v); }
+            }
+        }
+    }
+}
+
+component Hero inherits Card {
+    in property <string> title;
+    in property <string> description;
+    in property <image> icon;
+    in property <bool> on;
+    in property <string> hint;
+    callback toggled(bool);
+    clip: true;
+    // soft glow when on
+    Rectangle {
+        x: parent.width - 260px;
+        y: -120px;
+        width: 360px;
+        height: 300px;
+        border-radius: 180px;
+        background: @radial-gradient(circle, Theme.accent.transparentize(root.on ? 0.82 : 0.95) 0%, transparent 70%);
+        animate background { duration: 300ms; }
+    }
+    HorizontalLayout {
+        padding: 22px;
+        spacing: 18px;
+        Rectangle {
+            width: 54px;
+            height: 54px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 16px;
+            background: root.on ? Theme.accent-gradient : Theme.surface-2;
+            Icon {
+                source: root.icon;
+                width: 26px;
+                height: 26px;
+                tint: root.on ? white : Theme.muted;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                Text {
+                    text: root.title;
+                    font-size: 17px;
+                    font-weight: 700;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+                Badge {
+                    y: (parent.height - self.height) / 2;
+                    text: root.on ? "ON" : "OFF";
+                    tone: root.on ? Theme.success : Theme.faint;
+                }
+            }
+            Text {
+                text: root.description;
+                font-size: 12.5px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            if root.hint != "": Text {
+                text: root.hint;
+                font-size: 11.5px;
+                color: Theme.faint;
+            }
+        }
+        Toggle {
+            y: (parent.height - self.height) / 2;
+            checked: root.on;
+            toggled(v) => { root.toggled(v); }
+        }
+    }
+}
+
+component SliderRow inherits VerticalLayout {
+    in property <string> label;
+    in property <string> caption;
+    in property <int> value;
+    in property <int> minimum: 0;
+    in property <int> maximum: 255;
+    in property <string> value-text;
+    callback changed(int);
+    spacing: 10px;
+    HorizontalLayout {
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.label;
+                font-size: 13.5px;
+                font-weight: 600;
+                color: Theme.text;
+            }
+            Text {
+                text: root.caption;
+                font-size: 12px;
+                color: Theme.muted;
+            }
+        }
+        Text {
+            text: root.value-text;
+            font-size: 20px;
+            font-weight: 700;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+    FancySlider {
+        minimum: root.minimum;
+        maximum: root.maximum;
+        value: root.value;
+        changed(v) => { root.changed(v); }
+    }
+}
+
+// Window stack illustration for focus mode.
+component FocusArt inherits Rectangle {
+    in property <int> active: 255;
+    in property <int> back: 120;
+    in property <bool> on;
+    width: 220px;
+    height: 150px;
+    Rectangle {
+        x: 8px;
+        y: 14px;
+        width: 120px;
+        height: 84px;
+        border-radius: 10px;
+        background: Theme.surface-3;
+        opacity: root.on ? root.back / 255 : 1;
+        animate opacity { duration: 220ms; }
+        Rectangle { x: 10px; y: 10px; width: 46px; height: 5px; border-radius: 2.5px; background: Theme.faint; }
+        Rectangle { x: 10px; y: 26px; width: 92px; height: 5px; border-radius: 2.5px; background: Theme.border-strong; }
+        Rectangle { x: 10px; y: 38px; width: 70px; height: 5px; border-radius: 2.5px; background: Theme.border-strong; }
+    }
+    Rectangle {
+        x: 92px;
+        y: 4px;
+        width: 116px;
+        height: 76px;
+        border-radius: 10px;
+        background: Theme.surface-3;
+        opacity: root.on ? root.back / 255 : 1;
+        animate opacity { duration: 220ms; }
+        Rectangle { x: 10px; y: 10px; width: 40px; height: 5px; border-radius: 2.5px; background: Theme.faint; }
+        Rectangle { x: 10px; y: 26px; width: 80px; height: 5px; border-radius: 2.5px; background: Theme.border-strong; }
+    }
+    Rectangle {
+        x: 46px;
+        y: 48px;
+        width: 140px;
+        height: 96px;
+        border-radius: 12px;
+        background: Theme.accent-gradient;
+        opacity: root.on ? root.active / 255 : 1;
+        drop-shadow-blur: 18px;
+        drop-shadow-color: Theme.accent.transparentize(0.6);
+        animate opacity { duration: 220ms; }
+        Rectangle { x: 12px; y: 12px; width: 50px; height: 6px; border-radius: 3px; background: white.transparentize(0.2); }
+        Rectangle { x: 12px; y: 30px; width: 110px; height: 6px; border-radius: 3px; background: white.transparentize(0.55); }
+        Rectangle { x: 12px; y: 44px; width: 86px; height: 6px; border-radius: 3px; background: white.transparentize(0.55); }
+        Rectangle { x: 12px; y: 58px; width: 98px; height: 6px; border-radius: 3px; background: white.transparentize(0.55); }
+    }
+}
+
+component ScreenCard inherits Card {
+    in property <MonitorItem> m;
+    in property <bool> dimmer-on;
+    callback selected(bool);
+    callback level(int);
+    border-color: m.selected ? Theme.accent.transparentize(0.55) : Theme.border;
+    animate border-color { duration: 150ms; }
+    VerticalLayout {
+        padding: 18px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 16px;
+            // Screen glyph, darkened by the chosen level.
+            Rectangle {
+                width: 92px;
+                height: 64px;
+                Rectangle {
+                    width: min(92px, 56px * root.m.aspect);
+                    height: self.width / root.m.aspect;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - 8px - self.height) / 2;
+                    border-radius: 6px;
+                    border-width: 2px;
+                    border-color: Theme.border-strong;
+                    clip: true;
+                    background: @linear-gradient(135deg, Theme.accent 0%, Theme.accent-2 100%);
+                    Rectangle {
+                        background: black;
+                        opacity: root.m.selected ? root.m.level / 255 : 0;
+                        animate opacity { duration: 180ms; }
+                    }
+                }
+                Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - 6px;
+                    width: 28px;
+                    height: 4px;
+                    border-radius: 2px;
+                    background: Theme.border-strong;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 5px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: root.m.name;
+                        font-size: 14.5px;
+                        font-weight: 700;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if root.m.primary: Badge {
+                        y: (parent.height - self.height) / 2;
+                        text: "Primary";
+                        tone: Theme.accent;
+                    }
+                    if root.m.kind == 1: Badge {
+                        y: (parent.height - self.height) / 2;
+                        text: "Built-in";
+                        tone: Theme.warning;
+                    }
+                    if root.m.kind == 2: Badge {
+                        y: (parent.height - self.height) / 2;
+                        text: "Virtual";
+                        tone: Theme.faint;
+                    }
+                }
+                Text {
+                    text: root.m.detail;
+                    font-size: 12px;
+                    color: Theme.muted;
+                }
+                if root.dimmer-on && root.m.selected && root.m.mode != "": Text {
+                    text: root.m.mode;
+                    font-size: 11.5px;
+                    color: Theme.faint;
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: end;
+                Text {
+                    text: root.m.selected ? "Dim this screen" : "Not dimmed";
+                    font-size: 12px;
+                    color: Theme.muted;
+                    vertical-alignment: center;
+                }
+                Toggle {
+                    y: (parent.height - self.height) / 2;
+                    checked: root.m.selected;
+                    toggled(v) => { root.selected(v); }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Icon {
+                source: @image-url("icons/sun.svg");
+                y: (parent.height - self.height) / 2;
+                width: 16px;
+                height: 16px;
+            }
+            FancySlider {
+                horizontal-stretch: 1;
+                minimum: 0;
+                maximum: 200;
+                value: root.m.level;
+                enabled: root.m.selected;
+                changed(v) => { root.level(v); }
+            }
+            Icon {
+                source: @image-url("icons/moon.svg");
+                y: (parent.height - self.height) / 2;
+                width: 16px;
+                height: 16px;
+            }
+            Text {
+                text: "\{Math.round(root.m.level / 200 * 100)}%";
+                width: 46px;
+                font-size: 14px;
+                font-weight: 700;
+                color: root.m.selected ? Theme.text : Theme.faint;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component Modal inherits Rectangle {
+    in property <length> panel-width: 520px;
+    in property <length> panel-height: 300px;
+    callback dismiss();
+    background: #00000099;
+    TouchArea {
+        clicked => { root.dismiss(); }
+    }
+    panel := Rectangle {
+        width: min(root.panel-width, root.width - 48px);
+        height: min(root.panel-height, root.height - 48px);
+        border-radius: 18px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border-strong;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #00000080;
+        TouchArea { }
+        @children
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Transparency App";
+    icon: @image-url("logo.png");
+    preferred-width: 1060px;
+    preferred-height: 740px;
+    min-width: 880px;
+    min-height: 600px;
+    background: Theme.bg;
+    default-font-family: "Segoe UI Variable Text";
+    default-font-size: 13px;
+
+    in-out property <int> page: 0;
+    in property <string> version: "3.0.0";
+    in property <bool> transparency-on: true;
+    in property <bool> focus-on;
+    in property <bool> dimmer-on;
+    in property <int> affected;
+    in property <int> rule-count;
+    in property <[RuleItem]> rules;
+    in-out property <string> filter;
+    in property <[string]> presets;
+    in property <int> focus-active: 255;
+    in property <int> focus-bg: 120;
+    in property <[MonitorItem]> monitors;
+    in property <int> theme-mode;
+    in property <int> accent-index;
+    in property <[color]> accent-colors;
+    in property <bool> startup;
+    in property <bool> hotkeys-enabled: true;
+    in property <bool> auto-update: true;
+    in property <string> update-state: "idle";
+    in property <string> update-message: "Updates are checked automatically.";
+    in property <[HotkeyItem]> hotkeys;
+    in property <string> dimmer-hotkey;
+
+    in-out property <bool> picker-open;
+    in property <[PickItem]> picker-items;
+    in-out property <int> picker-mode;
+    in-out property <string> picker-query;
+    in-out property <bool> capture-open;
+    in-out property <string> capture-name;
+    in-out property <string> capture-message;
+    in-out property <bool> capture-error;
+    in-out property <bool> preset-open;
+    in-out property <string> preset-name;
+    in-out property <bool> update-offer-open;
+    in property <string> update-offer-version;
+    in property <string> toast;
+    in property <bool> toast-visible;
+
+    callback toggle-transparency(bool);
+    callback toggle-focus(bool);
+    callback toggle-dimmer(bool);
+    callback focus-active-changed(int);
+    callback focus-bg-changed(int);
+    callback rule-pattern(string, string);
+    callback rule-mode(string, int);
+    callback rule-opacity(string, int);
+    callback rule-enabled(string, bool);
+    callback rule-click(string, bool);
+    callback rule-topmost(string, bool);
+    callback rule-delete(string);
+    callback add-manual();
+    callback open-picker();
+    callback picker-search(string);
+    callback picker-pick(int);
+    callback picker-refresh();
+    callback filter-changed(string);
+    callback preset-apply(string);
+    callback preset-delete(string);
+    callback preset-save(string);
+    callback screen-selected(string, bool);
+    callback screen-level(string, int);
+    callback set-theme(int);
+    callback set-accent(int);
+    callback set-startup(bool);
+    callback set-hotkeys-enabled(bool);
+    callback set-auto-update(bool);
+    callback check-updates();
+    callback install-update();
+    callback capture-begin(string);
+    callback capture-key(string, bool, bool, bool, bool) -> bool;
+    callback capture-cancel();
+    callback reset-hotkeys();
+    callback export-settings();
+    callback import-settings();
+    callback restore-all();
+    callback page-shown(int);
+
+    private property <[{title: string, sub: string}]> heads: [
+        { title: "Window rules", sub: "Make chosen windows see-through, click-through or always on top." },
+        { title: "Focus mode", sub: "Fade everything except the window you are working in." },
+        { title: "Screen dimmer", sub: "Take each screen below its lowest brightness setting." },
+        { title: "Settings", sub: "Appearance, startup, updates and keyboard shortcuts." },
+    ];
+
+    HorizontalLayout {
+        // ---------------------------------------------------------- sidebar
+        Rectangle {
+            width: 244px;
+            background: Theme.sidebar;
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                background: Theme.border;
+            }
+            VerticalLayout {
+                padding: 16px;
+                padding-top: 22px;
+                spacing: 4px;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-bottom: 22px;
+                    spacing: 12px;
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 12px;
+                        clip: true;
+                        Image {
+                            source: @image-url("logo.png");
+                            width: 40px;
+                            height: 40px;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 1px;
+                        Text {
+                            text: "Transparency";
+                            font-size: 16px;
+                            font-weight: 700;
+                            color: Theme.text;
+                        }
+                        Text {
+                            text: "Version \{root.version}";
+                            font-size: 11px;
+                            color: Theme.faint;
+                        }
+                    }
+                }
+                NavItem {
+                    text: "Rules";
+                    icon: @image-url("icons/layers.svg");
+                    active: root.page == 0;
+                    badge: root.rule-count > 0 ? "\{root.rule-count}" : "";
+                    clicked => { root.page = 0; root.page-shown(0); }
+                }
+                NavItem {
+                    text: "Focus mode";
+                    icon: @image-url("icons/focus.svg");
+                    active: root.page == 1;
+                    live: root.focus-on;
+                    clicked => { root.page = 1; root.page-shown(1); }
+                }
+                NavItem {
+                    text: "Screen dimmer";
+                    icon: @image-url("icons/moon.svg");
+                    active: root.page == 2;
+                    live: root.dimmer-on;
+                    clicked => { root.page = 2; root.page-shown(2); }
+                }
+                NavItem {
+                    text: "Settings";
+                    icon: @image-url("icons/sliders.svg");
+                    active: root.page == 3;
+                    clicked => { root.page = 3; root.page-shown(3); }
+                }
+                Rectangle { vertical-stretch: 1; }
+                // Master switch card
+                Rectangle {
+                    border-radius: 14px;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 10px;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text {
+                                    text: "Transparency";
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    color: Theme.text;
+                                }
+                                Text {
+                                    text: !root.transparency-on ? "Rules are paused"
+                                        : root.affected == 1 ? "1 window affected"
+                                        : "\{root.affected} windows affected";
+                                    font-size: 11.5px;
+                                    color: root.transparency-on ? Theme.muted : Theme.warning;
+                                }
+                            }
+                            Toggle {
+                                y: (parent.height - self.height) / 2;
+                                checked: root.transparency-on;
+                                toggled(v) => { root.toggle-transparency(v); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Btn {
+                                horizontal-stretch: 1;
+                                height: 30px;
+                                kind: 1;
+                                font-size: 11.5px;
+                                text: "Restore all";
+                                icon: @image-url("icons/undo.svg");
+                                has-icon: true;
+                                clicked => { root.restore-all(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------- main
+        VerticalLayout {
+            horizontal-stretch: 1;
+            padding-left: 34px;
+            padding-right: 34px;
+            padding-top: 28px;
+            spacing: 22px;
+
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text {
+                        text: root.heads[root.page].title;
+                        font-size: 26px;
+                        font-weight: 700;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: root.heads[root.page].sub;
+                        font-size: 13px;
+                        color: Theme.muted;
+                    }
+                }
+                if root.page == 0: HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Btn {
+                        y: (parent.height - self.height) / 2;
+                        text: "Add manually";
+                        kind: 1;
+                        clicked => { root.add-manual(); }
+                    }
+                    Btn {
+                        y: (parent.height - self.height) / 2;
+                        text: "Pick a window";
+                        kind: 0;
+                        icon: @image-url("icons/plus.svg");
+                        has-icon: true;
+                        clicked => { root.open-picker(); }
+                    }
+                }
+            }
+
+            // ---------------- Rules
+            if root.page == 0: VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 14px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    TextField {
+                        width: 240px;
+                        has-icon: true;
+                        icon: @image-url("icons/search.svg");
+                        placeholder: "Filter rules";
+                        text: root.filter;
+                        edited(t) => { root.filter = t; root.filter-changed(t); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: "Presets";
+                        font-size: 12px;
+                        color: Theme.muted;
+                        vertical-alignment: center;
+                    }
+                    for p in root.presets: Rectangle {
+                        height: 32px;
+                        y: (parent.height - self.height) / 2;
+                        min-width: pl.preferred-width;
+                        border-radius: 16px;
+                        background: pta.has-hover ? Theme.surface-3 : Theme.surface-2;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        pta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.preset-apply(p); }
+                        }
+                        pl := HorizontalLayout {
+                            padding-left: 13px;
+                            padding-right: 4px;
+                            spacing: 4px;
+                            Text {
+                                text: p;
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                            }
+                            Rectangle {
+                                width: 24px;
+                                height: 24px;
+                                y: 4px;
+                                border-radius: 12px;
+                                background: xta.has-hover ? Theme.danger.transparentize(0.8) : transparent;
+                                Icon {
+                                    source: @image-url("icons/close.svg");
+                                    width: 12px;
+                                    height: 12px;
+                                    tint: xta.has-hover ? Theme.danger : Theme.faint;
+                                }
+                                xta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.preset-delete(p); }
+                                }
+                            }
+                        }
+                    }
+                    Btn {
+                        height: 32px;
+                        kind: 2;
+                        text: "Save as preset";
+                        font-size: 12px;
+                        icon: @image-url("icons/plus.svg");
+                        has-icon: true;
+                        enabled: root.rule-count > 0;
+                        clicked => {
+                            root.preset-name = "";
+                            root.preset-open = true;
+                        }
+                    }
+                }
+
+                if root.rule-count == 0: Card {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 10px;
+                        padding: 40px;
+                        Rectangle {
+                            height: 76px;
+                            Rectangle {
+                                width: 76px;
+                                height: 76px;
+                                border-radius: 24px;
+                                background: Theme.accent-soft;
+                                Icon {
+                                    source: @image-url("icons/layers.svg");
+                                    width: 34px;
+                                    height: 34px;
+                                    tint: Theme.accent;
+                                }
+                            }
+                        }
+                        Text {
+                            text: "No transparency rules yet";
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: Theme.text;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Pick one of your open windows, then drag its opacity down.\nThe rule keeps working for windows you open later.";
+                            font-size: 13px;
+                            color: Theme.muted;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            padding-top: 8px;
+                            Btn {
+                                text: "Pick a window";
+                                kind: 0;
+                                icon: @image-url("icons/plus.svg");
+                                has-icon: true;
+                                clicked => { root.open-picker(); }
+                            }
+                        }
+                    }
+                }
+
+                if root.rule-count > 0: sv := ScrollView {
+                    vertical-stretch: 1;
+                    content-width: self.visible-width;
+                    content-height: list.preferred-height;
+                    list := VerticalLayout {
+                        width: sv.visible-width;
+                        spacing: 12px;
+                        padding-right: 10px;
+                        padding-bottom: 24px;
+                        for r in root.rules: RuleCard {
+                            rule: r;
+                            pattern-edited(t) => { root.rule-pattern(r.id, t); }
+                            mode-changed(m) => { root.rule-mode(r.id, m); }
+                            opacity-changed(v) => { root.rule-opacity(r.id, v); }
+                            enabled-changed(v) => { root.rule-enabled(r.id, v); }
+                            click-changed(v) => { root.rule-click(r.id, v); }
+                            topmost-changed(v) => { root.rule-topmost(r.id, v); }
+                            delete => { root.rule-delete(r.id); }
+                        }
+                        if root.rules.length == 0: Text {
+                            text: "No rules match your filter.";
+                            color: Theme.muted;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // ---------------- Focus
+            if root.page == 1: fsv := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: fcol.preferred-height;
+                fcol := VerticalLayout {
+                    width: fsv.visible-width;
+                    padding-right: 10px;
+                    padding-bottom: 24px;
+                    spacing: 16px;
+                    Hero {
+                        title: "Focus mode";
+                        description: "Everything except the window you are using fades back. Switch windows and the focus follows.";
+                        icon: @image-url("icons/focus.svg");
+                        on: root.focus-on;
+                        hint: "Works even while rules are paused.";
+                        toggled(v) => { root.toggle-focus(v); }
+                    }
+                    Card {
+                        HorizontalLayout {
+                            padding: 24px;
+                            spacing: 28px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 26px;
+                                alignment: center;
+                                SliderRow {
+                                    label: "Focused window";
+                                    caption: "How solid the window you are working in stays.";
+                                    value: root.focus-active;
+                                    minimum: 20;
+                                    value-text: "\{Math.round(root.focus-active / 255 * 100)}%";
+                                    changed(v) => { root.focus-active-changed(v); }
+                                }
+                                Divider { }
+                                SliderRow {
+                                    label: "Background windows";
+                                    caption: "Never fully invisible, so nothing gets lost.";
+                                    value: root.focus-bg;
+                                    minimum: 20;
+                                    value-text: "\{Math.round(root.focus-bg / 255 * 100)}%";
+                                    changed(v) => { root.focus-bg-changed(v); }
+                                }
+                            }
+                            Rectangle {
+                                width: 250px;
+                                border-radius: 14px;
+                                background: Theme.surface-2;
+                                FocusArt {
+                                    on: true;
+                                    active: root.focus-active;
+                                    back: root.focus-bg;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---------------- Dimmer
+            if root.page == 2: dsv := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: dcol.preferred-height;
+                dcol := VerticalLayout {
+                    width: dsv.visible-width;
+                    padding-right: 10px;
+                    padding-bottom: 24px;
+                    spacing: 16px;
+                    Hero {
+                        title: "Screen dimmer";
+                        description: "Dims the whole picture, taskbar and fullscreen apps included. Screenshots stay at normal brightness.";
+                        icon: @image-url("icons/moon.svg");
+                        on: root.dimmer-on;
+                        hint: root.dimmer-hotkey != "" ? "Shortcut: \{root.dimmer-hotkey}" : "";
+                        toggled(v) => { root.toggle-dimmer(v); }
+                    }
+                    SectionTitle {
+                        text: "SCREENS";
+                        icon: @image-url("icons/monitor.svg");
+                    }
+                    for m in root.monitors: ScreenCard {
+                        m: m;
+                        dimmer-on: root.dimmer-on;
+                        selected(v) => { root.screen-selected(m.id, v); }
+                        level(v) => { root.screen-level(m.id, v); }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        padding-left: 4px;
+                        Icon {
+                            source: @image-url("icons/info.svg");
+                            width: 15px;
+                            height: 15px;
+                            tint: Theme.faint;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: "Screens you connect later are left alone until you switch them on here.";
+                            font-size: 12px;
+                            color: Theme.faint;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+
+            // ---------------- Settings
+            if root.page == 3: ssv := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: scol.preferred-height;
+                scol := VerticalLayout {
+                    width: ssv.visible-width;
+                    padding-right: 10px;
+                    padding-bottom: 28px;
+                    spacing: 12px;
+
+                    SectionTitle {
+                        text: "APPEARANCE";
+                        icon: @image-url("icons/palette.svg");
+                    }
+                    Card {
+                        VerticalLayout {
+                            SettingRow {
+                                title: "Theme";
+                                description: "System follows your Windows setting.";
+                                icon: @image-url("icons/sun.svg");
+                                Segmented {
+                                    y: (parent.height - self.height) / 2;
+                                    options: ["Dark", "Light", "System"];
+                                    selected: root.theme-mode;
+                                    select(i) => { root.set-theme(i); }
+                                }
+                            }
+                            Divider { }
+                            SettingRow {
+                                title: "Accent colour";
+                                description: "Used for highlights, sliders and switches.";
+                                icon: @image-url("icons/palette.svg");
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    for c[i] in root.accent-colors: Rectangle {
+                                        width: 28px;
+                                        height: 28px;
+                                        y: (parent.height - self.height) / 2;
+                                        border-radius: 14px;
+                                        background: c;
+                                        border-width: i == root.accent-index ? 3px : 0px;
+                                        border-color: Theme.surface;
+                                        drop-shadow-blur: i == root.accent-index ? 0px : 0px;
+                                        Rectangle {
+                                            width: 34px;
+                                            height: 34px;
+                                            border-radius: 17px;
+                                            border-width: i == root.accent-index ? 2px : (ata.has-hover ? 2px : 0px);
+                                            border-color: i == root.accent-index ? c : c.transparentize(0.5);
+                                        }
+                                        ata := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.set-accent(i); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    SectionTitle {
+                        text: "BEHAVIOUR";
+                        icon: @image-url("icons/bolt.svg");
+                    }
+                    Card {
+                        VerticalLayout {
+                            SettingRow {
+                                title: "Start with Windows";
+                                description: "Starts quietly in the tray when you sign in.";
+                                icon: @image-url("icons/power.svg");
+                                Toggle {
+                                    y: (parent.height - self.height) / 2;
+                                    checked: root.startup;
+                                    toggled(v) => { root.set-startup(v); }
+                                }
+                            }
+                            Divider { }
+                            SettingRow {
+                                title: "Global shortcuts";
+                                description: "Keyboard shortcuts that work in any app.";
+                                icon: @image-url("icons/keyboard.svg");
+                                Toggle {
+                                    y: (parent.height - self.height) / 2;
+                                    checked: root.hotkeys-enabled;
+                                    toggled(v) => { root.set-hotkeys-enabled(v); }
+                                }
+                            }
+                        }
+                    }
+
+                    SectionTitle {
+                        text: "UPDATES";
+                        icon: @image-url("icons/cloud.svg");
+                    }
+                    Card {
+                        VerticalLayout {
+                            SettingRow {
+                                title: "Check for updates automatically";
+                                description: "Verified releases from GitHub, checked when the app starts.";
+                                icon: @image-url("icons/download.svg");
+                                Toggle {
+                                    y: (parent.height - self.height) / 2;
+                                    checked: root.auto-update;
+                                    toggled(v) => { root.set-auto-update(v); }
+                                }
+                            }
+                            Divider { }
+                            SettingRow {
+                                title: "Version \{root.version}";
+                                description: root.update-message;
+                                icon: @image-url("icons/sparkle.svg");
+                                Btn {
+                                    y: (parent.height - self.height) / 2;
+                                    kind: root.update-state == "ready" ? 0 : 1;
+                                    text: root.update-state == "ready" ? "Install and restart"
+                                        : (root.update-state == "checking" || root.update-state == "downloading" || root.update-state == "installing") ? "Please wait"
+                                        : "Check now";
+                                    enabled: !(root.update-state == "checking" || root.update-state == "downloading" || root.update-state == "installing");
+                                    icon: @image-url("icons/refresh.svg");
+                                    has-icon: root.update-state != "ready";
+                                    clicked => {
+                                        if (root.update-state == "ready") {
+                                            root.install-update();
+                                        } else {
+                                            root.check-updates();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    SectionTitle {
+                        text: "KEYBOARD SHORTCUTS";
+                        icon: @image-url("icons/keyboard.svg");
+                    }
+                    Card {
+                        VerticalLayout {
+                            padding-top: 6px;
+                            padding-bottom: 6px;
+                            for hk[i] in root.hotkeys: Rectangle {
+                                height: 48px;
+                                background: hta.has-hover ? Theme.surface-2 : transparent;
+                                hta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        root.capture-name = hk.name;
+                                        root.capture-message = "Hold Ctrl, Alt or Shift and press a key.";
+                                        root.capture-error = false;
+                                        root.capture-open = true;
+                                        root.capture-begin(hk.action);
+                                    }
+                                }
+                                HorizontalLayout {
+                                    padding-left: 18px;
+                                    padding-right: 18px;
+                                    spacing: 6px;
+                                    Text {
+                                        horizontal-stretch: 1;
+                                        text: hk.name;
+                                        font-size: 13px;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                    }
+                                    if !hk.ok: Badge {
+                                        y: (parent.height - self.height) / 2;
+                                        text: "In use by another app";
+                                        tone: Theme.warning;
+                                    }
+                                    for k in hk.keys: Keycap {
+                                        y: (parent.height - self.height) / 2;
+                                        text: k;
+                                    }
+                                    Text {
+                                        text: "Change";
+                                        width: 56px;
+                                        font-size: 11.5px;
+                                        color: hta.has-hover ? Theme.accent : transparent;
+                                        horizontal-alignment: right;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                padding: 12px;
+                                padding-left: 14px;
+                                alignment: start;
+                                Btn {
+                                    height: 30px;
+                                    kind: 2;
+                                    font-size: 12px;
+                                    text: "Reset to defaults";
+                                    icon: @image-url("icons/undo.svg");
+                                    has-icon: true;
+                                    clicked => { root.reset-hotkeys(); }
+                                }
+                            }
+                        }
+                    }
+
+                    SectionTitle {
+                        text: "SETTINGS FILE";
+                        icon: @image-url("icons/file.svg");
+                    }
+                    Card {
+                        HorizontalLayout {
+                            padding: 16px;
+                            spacing: 10px;
+                            Text {
+                                horizontal-stretch: 1;
+                                text: "Back up or move your rules, presets and preferences.";
+                                font-size: 12.5px;
+                                color: Theme.muted;
+                                vertical-alignment: center;
+                                wrap: word-wrap;
+                            }
+                            Btn {
+                                text: "Export";
+                                icon: @image-url("icons/upload.svg");
+                                has-icon: true;
+                                clicked => { root.export-settings(); }
+                            }
+                            Btn {
+                                text: "Import";
+                                icon: @image-url("icons/download.svg");
+                                has-icon: true;
+                                clicked => { root.import-settings(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ dialogs
+    if root.picker-open: Modal {
+        panel-width: 600px;
+        panel-height: 620px;
+        dismiss => { root.picker-open = false; }
+        VerticalLayout {
+            padding: 22px;
+            spacing: 14px;
+            HorizontalLayout {
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 3px;
+                    Text {
+                        text: "Pick a window";
+                        font-size: 19px;
+                        font-weight: 700;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: "Choose an open window to create a rule for it.";
+                        font-size: 12.5px;
+                        color: Theme.muted;
+                    }
+                }
+                IconBtn {
+                    icon: @image-url("icons/close.svg");
+                    clicked => { root.picker-open = false; }
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                search := TextField {
+                    horizontal-stretch: 1;
+                    has-icon: true;
+                    icon: @image-url("icons/search.svg");
+                    placeholder: "Search open windows";
+                    text: root.picker-query;
+                    init => { self.focus-input(); }
+                    edited(t) => { root.picker-query = t; root.picker-search(t); }
+                }
+                IconBtn {
+                    y: 1px;
+                    icon: @image-url("icons/refresh.svg");
+                    clicked => { root.picker-refresh(); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: "Match the new rule by";
+                    font-size: 12px;
+                    color: Theme.muted;
+                    vertical-alignment: center;
+                }
+                Segmented {
+                    options: ["Window title", "App"];
+                    selected: root.picker-mode;
+                    select(i) => { root.picker-mode = i; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            psv := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: plist.preferred-height;
+                plist := VerticalLayout {
+                    width: psv.visible-width;
+                    spacing: 6px;
+                    padding-right: 10px;
+                    for w[i] in root.picker-items: Rectangle {
+                        height: 56px;
+                        border-radius: 12px;
+                        background: rta.has-hover ? Theme.surface-2 : transparent;
+                        border-width: 1px;
+                        border-color: rta.has-hover ? Theme.border-strong : Theme.border;
+                        rta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.picker-pick(i); }
+                        }
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 12px;
+                            Rectangle {
+                                width: 34px;
+                                height: 34px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 10px;
+                                background: Theme.accent-soft;
+                                Icon {
+                                    source: @image-url("icons/window.svg");
+                                    tint: Theme.accent;
+                                }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: w.title;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    color: Theme.text;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: w.process == "" ? "unknown app" : w.process;
+                                    font-size: 11.5px;
+                                    color: Theme.muted;
+                                    overflow: elide;
+                                }
+                            }
+                            Badge {
+                                y: (parent.height - self.height) / 2;
+                                text: "Add";
+                                tone: rta.has-hover ? Theme.accent : Theme.faint;
+                            }
+                        }
+                    }
+                    if root.picker-items.length == 0: Text {
+                        text: "No open windows match.";
+                        color: Theme.muted;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+
+    if root.capture-open: Modal {
+        panel-width: 440px;
+        panel-height: 250px;
+        dismiss => { root.capture-open = false; root.capture-cancel(); }
+        fs := FocusScope {
+            init => { self.focus(); }
+            key-pressed(e) => {
+                if (e.text == Key.Escape) {
+                    root.capture-open = false;
+                    root.capture-cancel();
+                    return accept;
+                }
+                if (root.capture-key(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta)) {
+                    root.capture-open = false;
+                }
+                accept
+            }
+            VerticalLayout {
+                padding: 26px;
+                spacing: 12px;
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 52px;
+                        height: 52px;
+                        border-radius: 16px;
+                        background: Theme.accent-soft;
+                        Icon {
+                            source: @image-url("icons/keyboard.svg");
+                            width: 26px;
+                            height: 26px;
+                            tint: Theme.accent;
+                        }
+                    }
+                }
+                Text {
+                    text: "Press the new shortcut";
+                    font-size: 17px;
+                    font-weight: 700;
+                    color: Theme.text;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: root.capture-name;
+                    font-size: 12.5px;
+                    color: Theme.muted;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: root.capture-message;
+                    font-size: 12px;
+                    color: root.capture-error ? Theme.danger : Theme.faint;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: "Esc cancels";
+                    font-size: 11px;
+                    color: Theme.faint;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+
+    if root.preset-open: Modal {
+        panel-width: 420px;
+        panel-height: 214px;
+        dismiss => { root.preset-open = false; }
+        VerticalLayout {
+            padding: 24px;
+            spacing: 14px;
+            Text {
+                text: "Save as preset";
+                font-size: 17px;
+                font-weight: 700;
+                color: Theme.text;
+            }
+            Text {
+                text: "Saves your current rules so you can switch back to them in one click.";
+                font-size: 12.5px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            TextField {
+                placeholder: "Preset name";
+                text <=> root.preset-name;
+                init => { self.focus-input(); }
+                accepted(t) => {
+                    if (t != "") {
+                        root.preset-save(t);
+                        root.preset-open = false;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Btn {
+                    text: "Cancel";
+                    kind: 2;
+                    clicked => { root.preset-open = false; }
+                }
+                Btn {
+                    text: "Save";
+                    kind: 0;
+                    enabled: root.preset-name != "";
+                    clicked => {
+                        root.preset-save(root.preset-name);
+                        root.preset-open = false;
+                    }
+                }
+            }
+        }
+    }
+
+    if root.update-offer-open: Modal {
+        panel-width: 440px;
+        panel-height: 250px;
+        dismiss => { root.update-offer-open = false; }
+        VerticalLayout {
+            padding: 24px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 14px;
+                Rectangle {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 14px;
+                    background: Theme.accent-gradient;
+                    Icon {
+                        source: @image-url("icons/sparkle.svg");
+                        width: 24px;
+                        height: 24px;
+                        tint: white;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: "Version \{root.update-offer-version} is ready";
+                        font-size: 17px;
+                        font-weight: 700;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: "Downloaded and SHA-256 verified";
+                        font-size: 12px;
+                        color: Theme.muted;
+                    }
+                }
+            }
+            Text {
+                text: "Install it and restart now? Your settings are kept and the previous version is saved for rollback.";
+                font-size: 12.5px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Btn {
+                    text: "Later";
+                    kind: 2;
+                    clicked => { root.update-offer-open = false; }
+                }
+                Btn {
+                    text: "Install and restart";
+                    kind: 0;
+                    clicked => {
+                        root.update-offer-open = false;
+                        root.install-update();
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ toast
+    Rectangle {
+        y: root.toast-visible ? root.height - 70px : root.height + 10px;
+        x: (root.width - self.width) / 2;
+        height: 40px;
+        width: tl.preferred-width;
+        border-radius: 20px;
+        background: Theme.dark ? #f2f4f8 : #1a1e27;
+        drop-shadow-blur: 20px;
+        drop-shadow-color: #00000066;
+        opacity: root.toast-visible ? 1 : 0;
+        animate y, opacity { duration: 220ms; easing: ease-out; }
+        tl := HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 18px;
+            spacing: 8px;
+            Icon {
+                source: @image-url("icons/check.svg");
+                y: (parent.height - self.height) / 2;
+                width: 16px;
+                height: 16px;
+                tint: Theme.success;
+            }
+            Text {
+                text: root.toast;
+                font-size: 12.5px;
+                font-weight: 600;
+                color: Theme.dark ? #141821 : #f2f4f8;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component InstallerWindow inherits Window {
+    title: "Updating Transparency App";
+    icon: @image-url("logo.png");
+    width: 520px;
+    height: 300px;
+    background: Theme.bg;
+    default-font-family: "Segoe UI Variable Text";
+    in property <string> version;
+    in property <float> progress: 0.04;
+    in property <string> status: "Preparing the verified update...";
+    in property <bool> failed;
+    in property <string> detail: "SHA-256 verified. A rollback copy is kept.";
+    callback close-clicked();
+    Card {
+        x: 20px;
+        y: 20px;
+        width: parent.width - 40px;
+        height: parent.height - 40px;
+        VerticalLayout {
+            padding: 26px;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 14px;
+                Rectangle {
+                    width: 46px;
+                    height: 46px;
+                    border-radius: 13px;
+                    clip: true;
+                    Image {
+                        source: @image-url("logo.png");
+                        width: 46px;
+                        height: 46px;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: "Updating Transparency App";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: root.version != "" ? "Verified release installer, version \{root.version}" : "Verified release installer";
+                        font-size: 12px;
+                        color: Theme.muted;
+                    }
+                }
+            }
+            Rectangle { height: 6px; }
+            Text {
+                text: root.status;
+                font-size: 13px;
+                color: root.failed ? Theme.danger : Theme.text;
+            }
+            Rectangle {
+                height: 8px;
+                border-radius: 4px;
+                background: Theme.surface-3;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0, min(1, root.progress));
+                    border-radius: 4px;
+                    background: root.failed ? Theme.danger : Theme.accent-gradient;
+                    animate width { duration: 300ms; easing: ease-out; }
+                }
+            }
+            Text {
+                text: root.detail;
+                font-size: 11.5px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            Rectangle { vertical-stretch: 1; }
+            if root.failed: HorizontalLayout {
+                alignment: end;
+                Btn {
+                    text: "Close";
+                    clicked => { root.close-clicked(); }
+                }
+            }
+        }
+    }
+}

@@ -1,7 +1,7 @@
 <h1 align="center">Transparency App</h1>
 
 <p align="center">
-  Make any window on Windows see-through — per app, with a slider.
+  Make any window on Windows see-through, per app, with a slider. Dim each screen below its lowest brightness.
 </p>
 
 <p align="center">
@@ -16,103 +16,88 @@
 
 ## What it is
 
-Transparency App is a lightweight tray utility that lets you set the opacity of
-other applications' windows. Want your code editor at 90% so you can read a
-video behind it, keep a chat window ghosted over your work, or dim everything
-except what you're focused on? Add a rule, drag a slider, done. Rules keep
-working for windows you open later, and the app sits quietly in your system
-tray.
+Transparency App is a small, native tray utility for Windows. Set the opacity
+of other apps' windows, fade everything except the window you are using, or
+dim a screen further than its brightness setting allows. Rules keep working
+for windows you open later, and the app sits quietly in the system tray.
+
+Version 3 is a rewrite in Rust: one 11 MB executable with no runtime to
+unpack, a fresh interface, and much lower memory use.
 
 ## Highlights
 
-- 🪟 **Per-app transparency rules** — match by window title or by application,
-  each with its own opacity.
-- 🎯 **Pick a window** — click one of your open windows instead of guessing its
+- **Per-app transparency rules.** Match by title text, exact title or app,
+  each with its own opacity, plus optional click-through and always on top.
+- **Pick a window.** Choose one of your open windows instead of guessing its
   exact title.
-- 🎚️ **Quick shades** — one-tap 25 / 50 / 75 / 100 %.
-- 🗂️ **Presets** — save rule sets and switch between them (Work, Gaming, …).
-- 🫥 **Focus mode** — dim every window except the one you're using; it follows
-  your focus automatically.
-- 🌒 **Per-monitor screen dimmer** — set a different click-through dimming
-  level for every display, or leave selected screens unchanged. The overlay is
-  automatically left out while Windows Snipping Tool captures, while still
-  using the original v2.2.0 dimmer behavior at every other time. It never
-  changes Explorer or taskbar transparency.
-- ⌨️ **Global hotkeys** — toggle transparency/focus, nudge opacity, or restore
-  everything with one keystroke. Every shortcut is remappable in Settings.
-- 🖱️ **Per-rule click-through & always-on-top.**
-- 🚀 **Run at startup**, 💾 **import/export settings**, 🌗 **dark/light theme**,
-  🎨 **seven accent colours.**
+- **Presets.** Save rule sets and switch between them in one click.
+- **Focus mode.** Everything except the window you are using fades back, and
+  the focus follows you.
+- **Per-screen dimmer.** Hardware gamma dimming (taskbar and fullscreen apps
+  included, screenshots unaffected) with an overlay for extra depth. Each
+  screen has its own level, and screens you connect later are left alone until
+  you switch them on.
+- **Safe with laptop lids, sleep and replugging.** The original brightness of
+  every screen is kept on disk, so a screen that was off while dimming changed
+  is put right as soon as it comes back.
+- **Global shortcuts**, all remappable. **Start with Windows**, **import and
+  export**, **dark, light or system theme**, **seven accent colours**.
+- **Verified updates** from GitHub Releases (SHA-256 checked, rollback copy
+  kept).
 
 ## Install
 
 1. Download **`TransparencyApp.exe`** from the
    [latest release](https://github.com/AkshitIreddy/TransparencyApp/releases/latest).
-2. Double-click it to run. That's it — no installer, no admin rights.
-3. (Optional) Turn on **Settings → Start with Windows** to launch at sign-in.
+2. Run it. No installer and no admin rights needed.
+3. Optional: turn on **Settings, Start with Windows**.
 
-After installation, the app checks GitHub Releases in the background. New
-versions are downloaded, SHA-256 verified, and installed after you approve the
-restart. A native Windows notification and tray-menu action appear when a
-verified update is ready. You can also use **Settings → Updates → Check now**
-at any time.
+Settings from earlier versions (`%APPDATA%\TransparencyApp\config.json`) are
+picked up automatically.
 
 > Windows SmartScreen may warn about a new unsigned app. Choose
-> **More info → Run anyway**. The full source is in this repo and the
-> executable is built in the open by
+> **More info, Run anyway**. The executable is built in the open by
 > [GitHub Actions](.github/workflows/release.yml).
 
-## Quick start
-
-1. Click **＋ Pick a window** and choose an open window.
-2. Drag its **Opacity** slider down.
-3. Minimise to the tray — the rule keeps working in the background.
-
-The full guide is in **[docs/USAGE.md](docs/USAGE.md)**.
-
-### Hotkeys
-
-All remappable in **Settings → Keyboard shortcuts**. Defaults:
+## Shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl+Alt+T` | Toggle all transparency |
+| `Ctrl+Alt+T` | Toggle transparency rules |
 | `Ctrl+Alt+F` | Toggle focus mode |
-| `Ctrl+Alt+↑` / `↓` | Focused window more / less opaque |
+| `Ctrl+Alt+D` | Toggle the screen dimmer |
+| `Ctrl+Alt+↑` / `↓` | Active window more or less opaque |
 | `Ctrl+Alt+Home` | Restore every window (panic) |
+
+The full guide is in **[docs/USAGE.md](docs/USAGE.md)**.
 
 ## How it works
 
-Windows exposes per-window opacity through *layered windows*
-(`SetLayeredWindowAttributes`). Transparency App watches the system for window
-events (a window opening, showing, being renamed, or gaining focus) via
-`SetWinEventHook` and applies your rules only when something actually changes —
-so it costs almost nothing while idle, unlike a polling loop. A single worker
-thread owns all the Win32 calls, every window's original state is recorded so
-it can be restored exactly, and if the app is ever killed it cleans up on the
-next launch.
+Window opacity uses Windows *layered windows*. The app listens for window
+events (`SetWinEventHook`) and applies rules only when something changes, so
+it costs nothing while idle. One worker thread owns every window change, each
+window's original state is recorded so it can be restored exactly, and a crash
+ledger lets the next launch clean up after a crash.
+
+The dimmer scales each screen's hardware gamma ramp. Screens are identified by
+their monitor device path rather than `\\.\DISPLAYn` names (which move around
+when the display layout changes), the true original ramp is stored before any
+change, and a restore owed to a screen that is currently off is retried when
+it returns, even in a later session.
 
 ## Build from source
 
-Windows-only, Python 3.12:
+Needs Rust (stable, MSVC toolchain) on Windows:
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements-dev.txt
-python -m transparency_app          # run from source
-pyinstaller --clean --noconfirm TransparencyApp.spec   # build the exe
+cargo build --release
+target\release\TransparencyApp.exe
 ```
 
-See **[docs/BUILDING.md](docs/BUILDING.md)** for the test suite, project
-layout, and release process.
-
-## Contributing
-
-Issues and pull requests are welcome. Please run the tests
-(`powershell -File scripts\run_tests.ps1`) before opening a PR. Changes are
-tracked in **[CHANGELOG.md](CHANGELOG.md)**.
+See **[docs/BUILDING.md](docs/BUILDING.md)** for tests and releases. Changes
+are tracked in **[CHANGELOG.md](CHANGELOG.md)**.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE). The interface is built with
+[Slint](https://slint.dev) under its royalty-free license.

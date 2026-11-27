@@ -34,3 +34,6 @@ Thumbs.db
 # Legacy runtime data
 data.json.migrated
 cilogs/
+
+# Rust
+/target/
