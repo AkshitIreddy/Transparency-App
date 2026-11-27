@@ -48,14 +48,21 @@ remembered across launches, like the screen dimmer.
 
 ## Screen dimmer
 
-The **Screen dimmer** lays a soft dark overlay over your monitors to cut glare
-in a dark room. It is click-through, so it never gets in your way. Each detected
-display has its own dimming slider, so one screen can stay bright while another
-is heavily dimmed. Untick a display to leave it completely unchanged. While
-Windows Snipping Tool is selecting a capture, the app temporarily excludes its
-dimmer so the saved screenshot retains the original brightness. Start,
-taskbars, and Windows shell flyouts retain the original v2.2.0 dimmer behavior
-during normal use; the app never changes Explorer or taskbar transparency.
+The **Screen dimmer** takes a screen below its lowest brightness setting. It
+dims the real output through the graphics card (taskbar, Start and fullscreen
+apps included) while screenshots keep normal brightness. Levels deeper than
+the hardware allows are topped up by a click-through overlay, and screens that
+do not support hardware dimming use the overlay only.
+
+Each screen has its own switch and level on the **Screen dimmer** page.
+Screens you connect later (a new monitor, a virtual display, a projector) are
+never dimmed until you switch them on there. Toggle the whole dimmer from the
+page, the tray menu or `Ctrl+Alt+D`.
+
+The app keeps each screen's original brightness on disk while it is dimmed.
+If a screen is off when dimming changes (a closed laptop lid, sleep, an
+unplugged cable), it is put right as soon as it comes back, even after a
+restart.
 
 ## Updates
 
@@ -74,6 +81,7 @@ Updates** to check manually or disable startup checks.
 | `Ctrl+Alt+F` | Toggle focus mode |
 | `Ctrl+Alt+↑` | Make the focused window more opaque |
 | `Ctrl+Alt+↓` | Make the focused window more transparent |
+| `Ctrl+Alt+D` | Toggle the screen dimmer |
 | `Ctrl+Alt+Home` | Restore every window (panic) |
 
 Every shortcut is remappable: in **Settings › Keyboard shortcuts**, click the

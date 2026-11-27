@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/).
 
+## [3.0.0] - 2026-11-27
+
+### Changed
+- **Rewritten in Rust.** One native 11 MB executable with no Python runtime
+  to unpack at launch, and much lower memory use. Settings, rules and presets
+  from 2.x are picked up automatically.
+- **New interface.** Redesigned with Slint: sidebar navigation, live opacity
+  previews on every rule, a focus mode preview, per-screen dimmer cards, a
+  keycap shortcut editor, and polished dark and light themes.
+- **New screens are no longer dimmed automatically.** Only screens you switch
+  on in the Screen dimmer page are dimmed; anything connected later is left
+  alone until you choose it.
+- Launching the app while it is already running now opens the existing
+  window instead of starting a second copy.
+
+### Fixed
+- **Dimming left behind on the laptop screen after closing and opening the
+  lid.** Screens are now tracked by their monitor device path instead of
+  `\\.\DISPLAYn` names, the true original gamma ramp is stored on disk, and a
+  restore owed to a screen that was off is applied when it comes back (even
+  after a restart). A dimmed ramp is never mistaken for the original, so
+  dimming can no longer compound. Display, lid, resume and unlock events
+  trigger a resync.
+
+### Added
+- `Ctrl+Alt+D` shortcut to toggle the screen dimmer.
+
 ## [2.3.0] — 2026-09-16
 
 ### Added

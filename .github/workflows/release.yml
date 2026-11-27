@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build (e.g. v2.0.0)"
+        description: "Tag to build (e.g. v3.0.0)"
         required: true
 
 permissions:
@@ -19,25 +19,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
 
-      - name: Install dependencies
+      - name: Check the tag matches Cargo.toml
+        shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          $tag = "${{ github.event.inputs.tag }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$version" -ne $tag) { throw "Tag $tag does not match Cargo.toml version $version" }
 
       - name: Run tests
-        run: pytest tests -q --timeout=90 --timeout-method=thread --reruns 2 --reruns-delay 2
+        run: cargo test --locked
 
       - name: Build executable
-        run: pyinstaller --clean --noconfirm TransparencyApp.spec
+        run: cargo build --release --locked
 
-      - name: Smoke-test the built executable
-        run: dist\TransparencyApp.exe --self-test
+      - name: Smoke test the built executable
+        shell: pwsh
+        run: |
+          $p = Start-Process target\release\TransparencyApp.exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "self-test failed with exit code $($p.ExitCode)" }
 
       - name: Package release zip
         shell: pwsh
@@ -46,8 +49,8 @@ jobs:
           if (-not $tag) { $tag = "${{ github.ref_name }}" }
           $stage = "release/TransparencyApp-$tag"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item dist\TransparencyApp.exe $stage\
-          Copy-Item README.md $stage\
+          Copy-Item target\release\TransparencyApp.exe $stage\
+          Copy-Item readme.md $stage\README.md
           Copy-Item LICENSE $stage\
           Compress-Archive -Path "$stage\*" -DestinationPath "release\TransparencyApp-$tag.zip" -Force
 
@@ -56,12 +59,10 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           name: Transparency App ${{ github.event.inputs.tag || github.ref_name }}
-          # Keep releases quiet: no auto-generated announcement, just a
-          # pointer to the changelog.
           generate_release_notes: false
           body: >
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
             for what changed in this version.
           files: |
-            dist/TransparencyApp.exe
+            target/release/TransparencyApp.exe
             release/TransparencyApp-*.zip
