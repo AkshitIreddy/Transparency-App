@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/).
 
+## [3.0.1] - 2026-11-28
+
+### Changed
+- **New app icon.** Layered glass window panes fading back, with a crescent
+  for the dimmer, on a deep blue squircle. Used for the exe, tray, window and
+  sidebar.
+
 ## [3.0.0] - 2026-11-27
 
 ### Changed
