@@ -3,8 +3,8 @@
 1 24 "app.manifest"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 3,0,0,0
- PRODUCTVERSION 3,0,0,0
+ FILEVERSION 3,0,1,0
+ PRODUCTVERSION 3,0,1,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS VOS_NT_WINDOWS32
@@ -17,12 +17,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Transparency App"
             VALUE "FileDescription", "Transparency App: per-window transparency and screen dimming"
-            VALUE "FileVersion", "3.0.0"
+            VALUE "FileVersion", "3.0.1"
             VALUE "InternalName", "TransparencyApp"
             VALUE "LegalCopyright", "Transparency App"
             VALUE "OriginalFilename", "TransparencyApp.exe"
             VALUE "ProductName", "Transparency App"
-            VALUE "ProductVersion", "3.0.0"
+            VALUE "ProductVersion", "3.0.1"
         END
     END
     BLOCK "VarFileInfo"

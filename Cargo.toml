@@ -1,6 +1,6 @@
 [package]
 name = "transparency-app"
-version = "3.0.0"
+version = "3.0.1"
 edition = "2021"
 description = "Per-window transparency, focus mode and screen dimming for Windows"
 license = "MIT"
